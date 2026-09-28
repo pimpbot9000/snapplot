@@ -1,0 +1,879 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SnapPlot</title>
+<style>
+  :root {
+    --bg: #f5f7fb;
+    --panel: #ffffff;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --line: #d1d5db;
+    --grid: #e5e7eb;
+    --accent: #2563eb;
+    --danger: #b91c1c;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+  }
+
+  body {
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  .wrap {
+    width: 100%;
+    height: 100vh;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    padding-left: clamp(22px, 5vw, 90px);
+    padding-right: clamp(22px, 5vw, 90px);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  h1 {
+    margin: 0 0 7px;
+    font-size: 21px;
+    line-height: 1.1;
+    flex: 0 0 auto;
+  }
+
+  .layout {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 280px minmax(500px, 0.82fr) 320px;
+    gap: 10px;
+    overflow: hidden;
+    align-items: stretch;
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid #e5e7eb;
+    border-radius: 11px;
+    padding: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.04);
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .controls {
+    overflow: hidden;
+  }
+
+  .field {
+    margin-bottom: 8px;
+  }
+
+  label {
+    display: block;
+    font-weight: 700;
+    margin-bottom: 3px;
+    font-size: 12px;
+  }
+
+  input[type="range"] {
+    width: 100%;
+    height: 28px;
+    margin: 0;
+    accent-color: var(--accent);
+  }
+
+  input[type="text"],
+  input[type="number"],
+  select {
+    width: 100%;
+    padding: 5px 7px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    font-size: 13px;
+    background: #fff;
+    height: 30px;
+  }
+
+  .axis-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .option-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-top: 5px;
+  }
+
+  .option-row label {
+    margin: 0;
+    font-weight: 600;
+    font-size: 12px;
+  }
+
+  #fitEquation {
+    min-height: 18px;
+    font-weight: 700;
+    font-size: 13px;
+    margin-top: 2px;
+  }
+
+  .hint {
+    color: var(--muted);
+    font-size: 10.5px;
+    line-height: 1.25;
+    margin: 7px 0 0;
+  }
+
+  .chart-panel {
+    display: flex;
+    flex-direction: column;
+    padding: 8px;
+    overflow: hidden;
+  }
+
+  .chart-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    flex: 0 0 auto;
+    margin-bottom: 5px;
+  }
+
+  .copy-status {
+    font-size: 11px;
+    color: var(--muted);
+    min-height: 14px;
+  }
+
+  .chart-wrap {
+    width: 100%;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: #fff;
+    border-radius: 7px;
+  }
+
+  .data-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .data-header {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 0 0 auto;
+    margin-bottom: 6px;
+  }
+
+  .data-header strong {
+    font-size: 14px;
+  }
+
+  .buttons {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+    margin: 0;
+  }
+
+  button {
+    border: 0;
+    border-radius: 7px;
+    padding: 6px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    font-weight: 650;
+  }
+
+  .primary {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .secondary {
+    background: #e5e7eb;
+    color: #111827;
+  }
+
+  .delete {
+    padding: 3px 7px;
+    background: #fee2e2;
+    color: var(--danger);
+  }
+
+  .table-scroll {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow-y: auto;
+    overflow-x: hidden;
+    border-top: 1px solid #eef0f3;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+
+  thead {
+    position: sticky;
+    top: 0;
+    background: #fff;
+    z-index: 2;
+  }
+
+  th, td {
+    border-bottom: 1px solid #e5e7eb;
+    padding: 3px 2px;
+    text-align: center;
+  }
+
+  th {
+    font-size: 12px;
+  }
+
+  td input {
+    text-align: center;
+    height: 28px !important;
+    padding: 3px 5px !important;
+  }
+
+  .row-actions {
+    width: 34px;
+  }
+
+  @media (max-height: 700px) {
+    .wrap { padding-top:7px; padding-bottom:7px; padding-left:clamp(12px, 2.5vw, 28px); padding-right:clamp(12px, 2.5vw, 28px); }
+    h1 { font-size: 18px; margin-bottom: 4px; }
+    .layout { grid-template-columns: 250px minmax(450px, 0.82fr) 290px; gap: 7px; }
+    .panel { padding: 7px; }
+    .field { margin-bottom: 5px; }
+    label { font-size: 11px; margin-bottom: 2px; }
+    input[type="text"], input[type="number"], select {
+      height: 27px;
+      font-size: 12px;
+      padding: 3px 5px;
+    }
+    .hint { display: none; }
+    td input { height: 25px !important; }
+  }
+
+  @media (max-width: 1100px) {
+    .layout {
+      grid-template-columns: 230px minmax(420px, 0.82fr) 260px;
+      gap: 7px;
+    }
+  }
+
+  @media print {
+    html, body { overflow: visible; height: auto; }
+    body { background: #fff; }
+    .controls, .data-panel { display: none; }
+    .layout { display: block; }
+    .chart-panel {
+      border: 0;
+      box-shadow: none;
+      padding: 0;
+      height: 95vh;
+    }
+    .wrap { height: auto; padding: 0; }
+    h1 { display: none; }
+  }
+</style>
+</head>
+
+<body>
+<div class="wrap">
+  <h1>SnapPlot</h1>
+
+  <div class="layout">
+    <section class="panel controls">
+      <div class="axis-grid">
+        <div class="field">
+          <label for="xTitle">x-akselin otsikko</label>
+          <input id="xTitle" type="text" value="Aika (s)">
+        </div>
+        <div class="field">
+          <label for="yTitle">y-akselin otsikko</label>
+          <input id="yTitle" type="text" value="Matka (m)">
+        </div>
+      </div>
+
+      <div class="axis-grid">
+        <div class="field">
+          <label for="xMax">x-akselin maksimi</label>
+          <input id="xMax" type="number" min="0" step="any" value="10">
+        </div>
+        <div class="field">
+          <label for="yMax">y-akselin maksimi</label>
+          <input id="yMax" type="number" min="0" step="any" value="20">
+        </div>
+      </div>
+
+      <div class="axis-grid">
+        <div class="field">
+          <label for="xStep">x-akselin askel</label>
+          <input id="xStep" type="number" min="0" step="any" value="1">
+        </div>
+        <div class="field">
+          <label for="yStep">y-akselin askel</label>
+          <input id="yStep" type="number" min="0" step="any" value="2">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="fitType">Sovitus</label>
+        <select id="fitType">
+          <option value="none">Ei sovitusta</option>
+          <option value="linear">Lineaarinen: y = ax + b</option>
+          <option value="proportional">Suoraan verrannollisuus: y = kx</option>
+          <option value="quadratic">Kvadraattinen: y = ax²</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="axisFontSize">Akselitekstin koko: <span id="axisFontSizeValue">14</span> px</label>
+        <input id="axisFontSize" type="range" min="10" max="24" step="1" value="14">
+      </div>
+
+      <div id="fitEquation"></div>
+
+      <div class="option-row">
+        <label><input type="checkbox" id="showGrid" checked> Ruudukko</label>
+      </div>
+
+      <p class="hint">
+        Vain positiiviset akselit näytetään. Pilkku käy desimaalierottimeksi.
+        Maksimin tai askeleen voi jättää tyhjäksi, jolloin sopiva arvo valitaan automaattisesti.
+      </p>
+    </section>
+
+    <section class="panel chart-panel">
+      <div class="chart-toolbar">
+        <button class="secondary" id="copyChartBtn">Kopioi kuvaaja</button>
+        <span id="chartCopyStatus" class="copy-status"></span>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="chart" width="900" height="620"></canvas>
+      </div>
+    </section>
+
+    <section class="panel data-panel">
+      <div class="data-header">
+        <strong>Data</strong>
+        <div class="buttons">
+          <button class="secondary" id="addRow">+ Lisää</button>
+          <button class="primary" id="drawBtn">Piirrä</button>
+          <button class="secondary" id="clearBtn">Tyhjennä</button>
+          <button class="secondary" id="copyTableBtn">Kopioi taulukko</button>
+        </div>
+        <span id="tableCopyStatus" class="copy-status"></span>
+      </div>
+
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th id="tableXHeader">x</th>
+              <th id="tableYHeader">y</th>
+              <th class="row-actions"></th>
+            </tr>
+          </thead>
+          <tbody id="dataBody"></tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+const body = document.getElementById("dataBody");
+const canvas = document.getElementById("chart");
+const ctx = canvas.getContext("2d");
+
+function addRow(x = "", y = "") {
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td><input type="text" inputmode="decimal" value="${x}"></td>
+    <td><input type="text" inputmode="decimal" value="${y}"></td>
+    <td><button class="delete" title="Poista rivi">×</button></td>
+  `;
+  tr.querySelector(".delete").addEventListener("click", () => {
+    tr.remove();
+    draw();
+  });
+  tr.querySelectorAll("input").forEach(inp => {
+    inp.addEventListener("input", draw);
+  });
+  body.appendChild(tr);
+}
+
+function parseNum(v) {
+  if (v == null) return NaN;
+
+  const s = String(v).trim();
+  if (s === "") return NaN;
+
+  return Number(s.replace(",", "."));
+}
+
+
+function syncTableHeaders() {
+  const xTitle = document.getElementById("xTitle").value.trim() || "x";
+  const yTitle = document.getElementById("yTitle").value.trim() || "y";
+
+  document.getElementById("tableXHeader").textContent = xTitle;
+  document.getElementById("tableYHeader").textContent = yTitle;
+}
+
+function getData() {
+  return [...body.querySelectorAll("tr")]
+    .map(tr => {
+      const [xInput, yInput] = tr.querySelectorAll("input");
+      return { x: parseNum(xInput.value), y: parseNum(yInput.value) };
+    })
+    .filter(p => Number.isFinite(p.x) && Number.isFinite(p.y) && p.x >= 0 && p.y >= 0)
+    .sort((a,b) => a.x - b.x);
+}
+
+function niceMax(value) {
+  if (!Number.isFinite(value) || value <= 0) return 10;
+  const raw = value * 1.1;
+  const power = Math.pow(10, Math.floor(Math.log10(raw)));
+  const n = raw / power;
+  let nice;
+  if (n <= 1) nice = 1;
+  else if (n <= 2) nice = 2;
+  else if (n <= 5) nice = 5;
+  else nice = 10;
+  return nice * power;
+}
+
+function niceStep(maxVal, targetTicks = 10) {
+  const rough = maxVal / targetTicks;
+  const power = Math.pow(10, Math.floor(Math.log10(rough)));
+  const n = rough / power;
+  let nice;
+  if (n <= 1) nice = 1;
+  else if (n <= 2) nice = 2;
+  else if (n <= 5) nice = 5;
+  else nice = 10;
+  return nice * power;
+}
+
+function fmt(n) {
+  if (Math.abs(n) >= 1000 || (Math.abs(n) > 0 && Math.abs(n) < 0.01)) {
+    return n.toExponential(1).replace(".", ",");
+  }
+  return String(Number(n.toFixed(6))).replace(".", ",");
+}
+
+function draw() {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  const cssWidth = Math.max(500, Math.floor(rect.width));
+  const cssHeight = Math.max(360, Math.floor(rect.height));
+
+  canvas.width = Math.round(cssWidth * dpr);
+  canvas.height = Math.round(cssHeight * dpr);
+
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,cssWidth,cssHeight);
+
+  const data = getData();
+  const typedXMax = parseNum(document.getElementById("xMax").value);
+  const typedYMax = parseNum(document.getElementById("yMax").value);
+
+  const dataXMax = data.length ? Math.max(...data.map(p => p.x)) : 10;
+  const dataYMax = data.length ? Math.max(...data.map(p => p.y)) : 10;
+
+  const xMax = Number.isFinite(typedXMax) && typedXMax > 0 ? typedXMax : niceMax(dataXMax);
+  const yMax = Number.isFinite(typedYMax) && typedYMax > 0 ? typedYMax : niceMax(dataYMax);
+
+  const chosenAxisFontSize = Number(document.getElementById("axisFontSize").value) || 14;
+  const extraLabelSpace = Math.max(0, chosenAxisFontSize - 14);
+  const margin = {
+    left: 84 + extraLabelSpace * 2,
+    right: 28,
+    top: 24,
+    bottom: 82 + extraLabelSpace * 1.5
+  };
+  const plotW = cssWidth - margin.left - margin.right;
+  const plotH = cssHeight - margin.top - margin.bottom;
+
+  const sx = x => margin.left + (x / xMax) * plotW;
+  const sy = y => margin.top + plotH - (y / yMax) * plotH;
+
+  const typedXStep = parseNum(document.getElementById("xStep").value);
+  const typedYStep = parseNum(document.getElementById("yStep").value);
+
+  const xStep = Number.isFinite(typedXStep) && typedXStep > 0 ? typedXStep : niceStep(xMax);
+  const yStep = Number.isFinite(typedYStep) && typedYStep > 0 ? typedYStep : niceStep(yMax);
+
+  const axisFontSize = Number(document.getElementById("axisFontSize").value) || 14;
+  document.getElementById("axisFontSizeValue").textContent = axisFontSize;
+
+  ctx.font = `${axisFontSize}px system-ui, sans-serif`;
+  ctx.lineWidth = 1;
+
+  if (document.getElementById("showGrid").checked) {
+    ctx.strokeStyle = "#e5e7eb";
+    ctx.fillStyle = "#4b5563";
+
+    for (let x = 0; x <= xMax + xStep*0.001; x += xStep) {
+      const px = sx(x);
+      ctx.beginPath();
+      ctx.moveTo(px, margin.top);
+      ctx.lineTo(px, margin.top + plotH);
+      ctx.stroke();
+
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText(fmt(x), px, margin.top + plotH + 10);
+    }
+
+    for (let y = 0; y <= yMax + yStep*0.001; y += yStep) {
+      const py = sy(y);
+      ctx.beginPath();
+      ctx.moveTo(margin.left, py);
+      ctx.lineTo(margin.left + plotW, py);
+      ctx.stroke();
+
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      ctx.fillText(fmt(y), margin.left - 10, py);
+    }
+  }
+
+  // Positive axes only: origin at bottom-left, no negative regions.
+  ctx.strokeStyle = "#111827";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(margin.left, margin.top);
+  ctx.lineTo(margin.left, margin.top + plotH);
+  ctx.lineTo(margin.left + plotW, margin.top + plotH);
+  ctx.stroke();
+
+  // ticks
+  ctx.lineWidth = 1.5;
+  for (let x = 0; x <= xMax + xStep*0.001; x += xStep) {
+    const px = sx(x);
+    ctx.beginPath();
+    ctx.moveTo(px, margin.top + plotH);
+    ctx.lineTo(px, margin.top + plotH + 6);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= yMax + yStep*0.001; y += yStep) {
+    const py = sy(y);
+    ctx.beginPath();
+    ctx.moveTo(margin.left - 6, py);
+    ctx.lineTo(margin.left, py);
+    ctx.stroke();
+  }
+
+  const visible = data.filter(p => p.x <= xMax && p.y <= yMax);
+
+  // Sovitus
+  const fitType = document.getElementById("fitType").value;
+  const fitEquation = document.getElementById("fitEquation");
+  fitEquation.textContent = "";
+
+  let fitFn = null;
+
+  if (data.length >= 2 && fitType === "linear") {
+    const n = data.length;
+    const sx1 = data.reduce((s,p) => s + p.x, 0);
+    const sy1 = data.reduce((s,p) => s + p.y, 0);
+    const sxx = data.reduce((s,p) => s + p.x*p.x, 0);
+    const sxy = data.reduce((s,p) => s + p.x*p.y, 0);
+    const den = n*sxx - sx1*sx1;
+    if (Math.abs(den) > 1e-12) {
+      const a = (n*sxy - sx1*sy1) / den;
+      const b = (sy1 - a*sx1) / n;
+      fitFn = x => a*x + b;
+      fitEquation.textContent = `y = ${fmt(a)}x ${b < 0 ? "−" : "+"} ${fmt(Math.abs(b))}`;
+    }
+  }
+
+  if (data.length >= 1 && fitType === "proportional") {
+    const num = data.reduce((s,p) => s + p.x*p.y, 0);
+    const den = data.reduce((s,p) => s + p.x*p.x, 0);
+    if (den > 1e-12) {
+      const k = num / den;
+      fitFn = x => k*x;
+      fitEquation.textContent = `y = ${fmt(k)}x`;
+    }
+  }
+
+  if (data.length >= 1 && fitType === "quadratic") {
+    const num = data.reduce((s,p) => s + p.x*p.x*p.y, 0);
+    const den = data.reduce((s,p) => s + Math.pow(p.x,4), 0);
+    if (den > 1e-12) {
+      const a = num / den;
+      fitFn = x => a*x*x;
+      fitEquation.textContent = `y = ${fmt(a)}x²`;
+    }
+  }
+
+  if (fitFn) {
+    ctx.strokeStyle = "#111827";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    let started = false;
+    const samples = 400;
+    for (let i = 0; i <= samples; i++) {
+      const x = xMax * i / samples;
+      const y = fitFn(x);
+      if (Number.isFinite(y) && y >= 0 && y <= yMax) {
+        const px = sx(x), py = sy(y);
+        if (!started) {
+          ctx.moveTo(px, py);
+          started = true;
+        } else {
+          ctx.lineTo(px, py);
+        }
+      } else {
+        started = false;
+      }
+    }
+    ctx.stroke();
+  }
+
+  // Mittauspisteet
+  ctx.fillStyle = "#2563eb";
+  visible.forEach(p => {
+    ctx.beginPath();
+    ctx.arc(sx(p.x), sy(p.y), 5, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // axis titles
+  ctx.fillStyle = "#111827";
+  ctx.font = `600 ${Math.round(axisFontSize * 1.2)}px system-ui, sans-serif`;
+
+  const xTitle = document.getElementById("xTitle").value.trim();
+  const yTitle = document.getElementById("yTitle").value.trim();
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  ctx.fillText(xTitle, margin.left + plotW/2, cssHeight - 12);
+
+  ctx.save();
+  ctx.translate(22, margin.top + plotH/2);
+  ctx.rotate(-Math.PI/2);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.fillText(yTitle, 0, 0);
+  ctx.restore();
+}
+
+document.getElementById("addRow").addEventListener("click", () => {
+  addRow();
+  const rows = body.querySelectorAll("tr");
+  rows[rows.length - 1].querySelector("input").focus();
+});
+
+document.getElementById("drawBtn").addEventListener("click", draw);
+
+document.getElementById("clearBtn").addEventListener("click", () => {
+  body.innerHTML = "";
+  for (let i = 0; i < 5; i++) addRow();
+  draw();
+});
+
+["xTitle","yTitle","xMax","yMax","xStep","yStep","fitType","axisFontSize","showGrid"].forEach(id => {
+  document.getElementById(id).addEventListener("input", () => {
+    if (id === "xTitle" || id === "yTitle") syncTableHeaders();
+    draw();
+  });
+  document.getElementById(id).addEventListener("change", () => {
+    if (id === "xTitle" || id === "yTitle") syncTableHeaders();
+    draw();
+  });
+});
+
+for (let i = 0; i < 5; i++) addRow();
+
+
+async function copyChartToClipboard() {
+  const status = document.getElementById("chartCopyStatus");
+  try {
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+    if (!blob) throw new Error("Kuvan luonti epäonnistui");
+
+    if (navigator.clipboard && window.ClipboardItem) {
+      await navigator.clipboard.write([
+        new ClipboardItem({ "image/png": blob })
+      ]);
+      status.textContent = "Kopioitu!";
+      setTimeout(() => status.textContent = "", 1500);
+    } else {
+      throw new Error("Kuvan kopiointi ei ole tuettu tässä selaimessa");
+    }
+  } catch (err) {
+    status.textContent = "Kopiointi epäonnistui";
+    console.error(err);
+  }
+}
+
+async function copyTableToClipboard() {
+  const status = document.getElementById("tableCopyStatus");
+
+  // Ignore rows where both cells are empty.
+  const rows = [...body.querySelectorAll("tr")]
+    .map(tr => {
+      const inputs = tr.querySelectorAll("input");
+      return [inputs[0].value.trim(), inputs[1].value.trim()];
+    })
+    .filter(([x, y]) => x !== "" || y !== "");
+
+  const xHeader = document.getElementById("xTitle").value.trim() || "x";
+  const yHeader = document.getElementById("yTitle").value.trim() || "y";
+
+  const plainText = [`${xHeader}\t${yHeader}`, ...rows.map(([x, y]) => `${x}\t${y}`)].join("\r\n");
+
+  // Excel-like Office HTML. This is intentionally close to the kind of HTML
+  // Microsoft Office places on the clipboard when copying a small cell range.
+  const htmlRows = rows.map(([x, y]) => `
+    <tr>
+      <td class="xl65">${escapeHtml(x)}</td>
+      <td class="xl65">${escapeHtml(y)}</td>
+    </tr>
+  `).join("");
+
+  const htmlTable = `
+    <html xmlns:o="urn:schemas-microsoft-com:office:office"
+          xmlns:x="urn:schemas-microsoft-com:office:excel"
+          xmlns="http://www.w3.org/TR/REC-html40">
+    <head>
+      <meta charset="utf-8">
+      <meta name="ProgId" content="Excel.Sheet">
+      <meta name="Generator" content="Microsoft Excel">
+      <!--[if gte mso 9]>
+      <xml>
+        <x:ExcelWorkbook>
+          <x:ExcelWorksheets>
+            <x:ExcelWorksheet>
+              <x:Name>Sheet1</x:Name>
+              <x:WorksheetOptions>
+                <x:Selected/>
+                <x:ProtectContents>False</x:ProtectContents>
+                <x:ProtectObjects>False</x:ProtectObjects>
+                <x:ProtectScenarios>False</x:ProtectScenarios>
+              </x:WorksheetOptions>
+            </x:ExcelWorksheet>
+          </x:ExcelWorksheets>
+        </x:ExcelWorkbook>
+      </xml>
+      <![endif]-->
+      <style>
+        table {
+          border-collapse: collapse;
+          table-layout: auto;
+          width: auto;
+          font-family: Calibri, Arial, sans-serif;
+          font-size: 11pt;
+          mso-table-lspace: 0pt;
+          mso-table-rspace: 0pt;
+        }
+
+        th, td {
+          border: 1px solid #000;
+          padding: 0 14px;
+          margin: 0;
+          text-align: center;
+          vertical-align: middle;
+          white-space: nowrap;
+          height: 18px;
+          mso-number-format: General;
+        }
+
+        th {
+          font-weight: 700;
+        }
+
+        .xl65 {
+          mso-number-format: General;
+        }
+      </style>
+    </head>
+    <body>
+      <!--StartFragment-->
+      <table cellspacing="0" cellpadding="0">
+        <tr>
+          <th>${escapeHtml(xHeader)}</th>
+          <th>${escapeHtml(yHeader)}</th>
+        </tr>
+        ${htmlRows}
+      </table>
+      <!--EndFragment-->
+    </body>
+    </html>
+  `;
+
+  try {
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        "text/html": new Blob([htmlTable], { type: "text/html" }),
+        "text/plain": new Blob([plainText], { type: "text/plain" })
+      })
+    ]);
+
+    status.textContent = "Kopioitu Excel-tyylisesti!";
+    setTimeout(() => status.textContent = "", 1800);
+  } catch (err) {
+    console.error(err);
+
+    try {
+      await navigator.clipboard.writeText(plainText);
+      status.textContent = "Data kopioitu!";
+      setTimeout(() => status.textContent = "", 1800);
+    } catch {
+      status.textContent = "Kopiointi epäonnistui";
+      setTimeout(() => status.textContent = "", 1800);
+    }
+  }
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+document.getElementById("copyChartBtn").addEventListener("click", copyChartToClipboard);
+document.getElementById("copyTableBtn").addEventListener("click", copyTableToClipboard);
+
+window.addEventListener("resize", draw);
+syncTableHeaders();
+draw();
+</script>
+</body>
+</html>
