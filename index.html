@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SnapPlot</title>
+<title>FuzzPlot – Plot with zero fuss!</title>
 <style>
   :root {
     --bg: #f5f7fb;
@@ -56,6 +56,23 @@
     height: 32px;
     flex: 0 0 auto;
     color: var(--accent);
+  }
+
+
+  .brand-text {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+  }
+
+  .tagline {
+    margin-top: 2px;
+    font-size: 11px;
+    line-height: 1.1;
+    color: var(--muted);
+    font-weight: 600;
+    letter-spacing: .01em;
   }
 
   h1 {
@@ -336,7 +353,7 @@
 <body>
 <div class="wrap">
   <div class="brand">
-  <svg class="brand-logo" viewBox="0 0 48 48" role="img" aria-label="SnapPlot logo">
+  <svg class="brand-logo" viewBox="0 0 48 48" role="img" aria-label="FuzzPlot logo">
     <rect x="1" y="1" width="46" height="46" rx="10" fill="none" stroke="currentColor" stroke-width="2"/>
     <path d="M11 36V12M11 36H38" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
     <path d="M14 32C19 30 21 24 25 23C29 22 31 15 37 13" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"/>
@@ -345,7 +362,7 @@
     <circle cx="31" cy="18" r="2.4" fill="currentColor"/>
     <circle cx="37" cy="13" r="2.4" fill="currentColor"/>
   </svg>
-  <h1>SnapPlot</h1>
+  <h1>FuzzPlot</h1>
 </div>
 
   <div class="layout">
@@ -390,7 +407,8 @@
           <option value="linear">Lineaarinen: y = kx + b</option>
           <option value="proportional">Suoraan verrannollisuus: y = kx</option>
           <option value="quadratic">Kvadraattinen: y = ax²</option>
-          <option value="exponential">Eksponentiaalinen: y = ae^(bx)</option>
+          <option value="exponentialE">Eksponentiaalinen: y = ae^(bx)</option>
+          <option value="exponentialQ">Eksponentiaalinen: y = aq^x</option>
           <option value="sqrt">Neliöjuuri: y = k√x</option>
           <option value="inverse">Kääntäen verrannollinen: y = k/x</option>
           <option value="quadraticGeneral">Toisen asteen: y = ax² + bx + c</option>
@@ -796,7 +814,7 @@ function draw() {
     }
   }
 
-  if (fitType === "exponential") {
+  if (fitType === "exponentialE") {
     // Linearize ln(y) = ln(a) + bx. Only y > 0 is valid.
     const expData = data.filter(p => p.y > 0);
 
@@ -815,6 +833,30 @@ function draw() {
 
         fitFn = x => a * Math.exp(b*x);
         fitEquation.textContent = `y = ${fmt(a)}e^(${fmt(b)}x)`;
+      }
+    }
+  }
+
+  if (fitType === "exponentialQ") {
+    // Same exponential model, shown as y = a*q^x where q = e^b.
+    const expData = data.filter(p => p.y > 0);
+
+    if (expData.length >= 2) {
+      const n = expData.length;
+      const sx1 = expData.reduce((s,p) => s + p.x, 0);
+      const slny = expData.reduce((s,p) => s + Math.log(p.y), 0);
+      const sxx = expData.reduce((s,p) => s + p.x*p.x, 0);
+      const sxlny = expData.reduce((s,p) => s + p.x*Math.log(p.y), 0);
+      const den = n*sxx - sx1*sx1;
+
+      if (Math.abs(den) > 1e-12) {
+        const b = (n*sxlny - sx1*slny) / den;
+        const lnA = (slny - b*sx1) / n;
+        const a = Math.exp(lnA);
+        const q = Math.exp(b);
+
+        fitFn = x => a * Math.pow(q, x);
+        fitEquation.textContent = `y = ${fmt(a)}·${fmt(q)}^x`;
       }
     }
   }
