@@ -306,6 +306,30 @@
     padding: 3px 5px !important;
   }
 
+  .ignore-col {
+    width: 52px;
+  }
+
+  .ignore-cell {
+    text-align: center;
+  }
+
+  .ignore-toggle {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--accent);
+  }
+
+  tr.ignored-row td {
+    background: #f3f4f6;
+  }
+
+  tr.ignored-row td input[type="text"] {
+    background: #f3f4f6;
+    color: #6b7280;
+  }
+
   .row-actions {
     width: 34px;
   }
@@ -466,13 +490,14 @@
             <tr>
               <th id="tableXHeader">x</th>
               <th id="tableYHeader">y</th>
+              <th class="ignore-col">Ohita</th>
               <th class="row-actions"></th>
             </tr>
           </thead>
           <tbody id="dataBody"></tbody>
           <tfoot>
             <tr>
-              <td colspan="3" class="add-row-cell">
+              <td colspan="4" class="add-row-cell">
                 <button class="secondary" id="addRow">+ Lisää rivi</button>
               </td>
             </tr>
@@ -488,18 +513,30 @@ const body = document.getElementById("dataBody");
 const canvas = document.getElementById("chart");
 const ctx = canvas.getContext("2d");
 
-function addRow(x = "", y = "") {
+function addRow(x = "", y = "", ignored = false) {
   const tr = document.createElement("tr");
   tr.innerHTML = `
-    <td><input type="text" inputmode="decimal" value="${x}"></td>
-    <td><input type="text" inputmode="decimal" value="${y}"></td>
+    <td><input class="data-input x-input" type="text" inputmode="decimal" value="${x}"></td>
+    <td><input class="data-input y-input" type="text" inputmode="decimal" value="${y}"></td>
+    <td class="ignore-cell"><input class="ignore-toggle" type="checkbox" title="Ohita sovituksessa" ${ignored ? "checked" : ""}></td>
     <td><button class="delete" title="Poista rivi">×</button></td>
   `;
+
+  const xInput = tr.querySelector(".x-input");
+  const yInput = tr.querySelector(".y-input");
+  const dataInputs = [xInput, yInput];
+  const ignoreToggle = tr.querySelector(".ignore-toggle");
+
+  function syncIgnoredState() {
+    tr.classList.toggle("ignored-row", ignoreToggle.checked);
+  }
+
   tr.querySelector(".delete").addEventListener("click", () => {
     tr.remove();
     draw();
   });
-  tr.querySelectorAll("input").forEach(inp => {
+
+  dataInputs.forEach(inp => {
     inp.addEventListener("input", draw);
 
     inp.addEventListener("keydown", (e) => {
@@ -508,7 +545,7 @@ function addRow(x = "", y = "") {
       const row = inp.closest("tr");
       const rows = [...body.querySelectorAll("tr")];
       const rowIndex = rows.indexOf(row);
-      const inputs = [...row.querySelectorAll("input")];
+      const inputs = [...row.querySelectorAll("input.data-input")];
       const colIndex = inputs.indexOf(inp);
 
       let target = null;
@@ -527,19 +564,19 @@ function addRow(x = "", y = "") {
 
       if (e.key === "ArrowUp") {
         if (rowIndex > 0) {
-          const targetInputs = rows[rowIndex - 1].querySelectorAll("input");
+          const targetInputs = rows[rowIndex - 1].querySelectorAll("input.data-input");
           target = targetInputs[colIndex];
         }
       }
 
       if (e.key === "ArrowDown") {
         if (rowIndex < rows.length - 1) {
-          const targetInputs = rows[rowIndex + 1].querySelectorAll("input");
+          const targetInputs = rows[rowIndex + 1].querySelectorAll("input.data-input");
           target = targetInputs[colIndex];
         } else {
           addRow();
           const updatedRows = [...body.querySelectorAll("tr")];
-          const targetInputs = updatedRows[updatedRows.length - 1].querySelectorAll("input");
+          const targetInputs = updatedRows[updatedRows.length - 1].querySelectorAll("input.data-input");
           target = targetInputs[colIndex];
         }
       }
@@ -551,6 +588,13 @@ function addRow(x = "", y = "") {
       }
     });
   });
+
+  ignoreToggle.addEventListener("change", () => {
+    syncIgnoredState();
+    draw();
+  });
+
+  syncIgnoredState();
   body.appendChild(tr);
 }
 
@@ -575,8 +619,15 @@ function syncTableHeaders() {
 function getData() {
   return [...body.querySelectorAll("tr")]
     .map(tr => {
-      const [xInput, yInput] = tr.querySelectorAll("input");
-      return { x: parseNum(xInput.value), y: parseNum(yInput.value) };
+      const xInput = tr.querySelector(".x-input");
+      const yInput = tr.querySelector(".y-input");
+      const ignoreToggle = tr.querySelector(".ignore-toggle");
+
+      return {
+        x: parseNum(xInput.value),
+        y: parseNum(yInput.value),
+        ignored: !!ignoreToggle?.checked
+      };
     })
     .filter(p => Number.isFinite(p.x) && Number.isFinite(p.y) && p.x >= 0 && p.y >= 0)
     .sort((a,b) => a.x - b.x);
@@ -666,12 +717,14 @@ function draw() {
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,cssWidth,cssHeight);
 
-  const data = getData();
+  const allData = getData();
+  const fitData = allData.filter(p => !p.ignored);
+
   const typedXMax = parseNum(document.getElementById("xMax").value);
   const typedYMax = parseNum(document.getElementById("yMax").value);
 
-  const dataXMax = data.length ? Math.max(...data.map(p => p.x)) : 10;
-  const dataYMax = data.length ? Math.max(...data.map(p => p.y)) : 10;
+  const dataXMax = allData.length ? Math.max(...allData.map(p => p.x)) : 10;
+  const dataYMax = allData.length ? Math.max(...allData.map(p => p.y)) : 10;
 
   const xMax = Number.isFinite(typedXMax) && typedXMax > 0 ? typedXMax : niceMax(dataXMax);
   const yMax = Number.isFinite(typedYMax) && typedYMax > 0 ? typedYMax : niceMax(dataYMax);
@@ -770,7 +823,9 @@ function draw() {
     ctx.stroke();
   }
 
-  const visible = data.filter(p => p.x <= xMax && p.y <= yMax);
+  const visible = allData.filter(p => p.x <= xMax && p.y <= yMax);
+  const visibleIncluded = visible.filter(p => !p.ignored);
+  const visibleIgnored = visible.filter(p => p.ignored);
 
   // Sovitus
   const fitType = document.getElementById("fitType").value;
@@ -779,12 +834,12 @@ function draw() {
 
   let fitFn = null;
 
-  if (data.length >= 2 && fitType === "linear") {
-    const n = data.length;
-    const sx1 = data.reduce((s,p) => s + p.x, 0);
-    const sy1 = data.reduce((s,p) => s + p.y, 0);
-    const sxx = data.reduce((s,p) => s + p.x*p.x, 0);
-    const sxy = data.reduce((s,p) => s + p.x*p.y, 0);
+  if (fitData.length >= 2 && fitType === "linear") {
+    const n = fitData.length;
+    const sx1 = fitData.reduce((s,p) => s + p.x, 0);
+    const sy1 = fitData.reduce((s,p) => s + p.y, 0);
+    const sxx = fitData.reduce((s,p) => s + p.x*p.x, 0);
+    const sxy = fitData.reduce((s,p) => s + p.x*p.y, 0);
     const den = n*sxx - sx1*sx1;
     if (Math.abs(den) > 1e-12) {
       const k = (n*sxy - sx1*sy1) / den;
@@ -794,9 +849,9 @@ function draw() {
     }
   }
 
-  if (data.length >= 1 && fitType === "proportional") {
-    const num = data.reduce((s,p) => s + p.x*p.y, 0);
-    const den = data.reduce((s,p) => s + p.x*p.x, 0);
+  if (fitData.length >= 1 && fitType === "proportional") {
+    const num = fitData.reduce((s,p) => s + p.x*p.y, 0);
+    const den = fitData.reduce((s,p) => s + p.x*p.x, 0);
     if (den > 1e-12) {
       const k = num / den;
       fitFn = x => k*x;
@@ -804,9 +859,9 @@ function draw() {
     }
   }
 
-  if (data.length >= 1 && fitType === "quadratic") {
-    const num = data.reduce((s,p) => s + p.x*p.x*p.y, 0);
-    const den = data.reduce((s,p) => s + Math.pow(p.x,4), 0);
+  if (fitData.length >= 1 && fitType === "quadratic") {
+    const num = fitData.reduce((s,p) => s + p.x*p.x*p.y, 0);
+    const den = fitData.reduce((s,p) => s + Math.pow(p.x,4), 0);
     if (den > 1e-12) {
       const a = num / den;
       fitFn = x => a*x*x;
@@ -816,7 +871,7 @@ function draw() {
 
   if (fitType === "exponentialE") {
     // Linearize ln(y) = ln(a) + bx. Only y > 0 is valid.
-    const expData = data.filter(p => p.y > 0);
+    const expData = fitData.filter(p => p.y > 0);
 
     if (expData.length >= 2) {
       const n = expData.length;
@@ -839,7 +894,7 @@ function draw() {
 
   if (fitType === "exponentialQ") {
     // Same exponential model, shown as y = a*q^x where q = e^b.
-    const expData = data.filter(p => p.y > 0);
+    const expData = fitData.filter(p => p.y > 0);
 
     if (expData.length >= 2) {
       const n = expData.length;
@@ -863,7 +918,7 @@ function draw() {
 
   if (fitType === "sqrt") {
     // Least-squares fit through the origin for y = k*sqrt(x).
-    const sqrtData = data.filter(p => p.x >= 0);
+    const sqrtData = fitData.filter(p => p.x >= 0);
 
     if (sqrtData.length >= 1) {
       const num = sqrtData.reduce((s,p) => s + Math.sqrt(p.x)*p.y, 0);
@@ -880,14 +935,14 @@ function draw() {
   if (fitType === "inverse") {
     // y = k/x  ->  least squares in y = k*(1/x)
     // Any x = 0 makes the model undefined, so do not attempt the fit.
-    const hasZeroX = data.some(p => Math.abs(p.x) < 1e-12);
+    const hasZeroX = fitData.some(p => Math.abs(p.x) < 1e-12);
 
     if (hasZeroX) {
       fitFn = null;
       fitEquation.textContent = "Virhe: kääntäen verrannollista sovitusta ei voi tehdä, kun x = 0.";
-    } else if (data.length >= 1) {
-      const num = data.reduce((s,p) => s + (1 / p.x) * p.y, 0);
-      const den = data.reduce((s,p) => s + 1 / (p.x * p.x), 0);
+    } else if (fitData.length >= 1) {
+      const num = fitData.reduce((s,p) => s + (1 / p.x) * p.y, 0);
+      const den = fitData.reduce((s,p) => s + 1 / (p.x * p.x), 0);
 
       if (den > 1e-12 && Number.isFinite(num) && Number.isFinite(den)) {
         const k = num / den;
@@ -906,7 +961,7 @@ function draw() {
   if (fitType === "quadraticGeneral") {
     const throughOrigin = document.getElementById("throughOrigin").checked;
 
-    if ((!throughOrigin && data.length < 3) || (throughOrigin && data.length < 2)) {
+    if ((!throughOrigin && fitData.length < 3) || (throughOrigin && fitData.length < 2)) {
       fitFn = null;
       fitEquation.textContent = throughOrigin
         ? "Virhe: origon kautta kulkeva toisen asteen sovitus tarvitsee vähintään 2 pistettä."
@@ -914,12 +969,12 @@ function draw() {
     } else {
       if (throughOrigin) {
         // y = ax^2 + bx
-        const S2 = data.reduce((s,p) => s + p.x**2, 0);
-        const S3 = data.reduce((s,p) => s + p.x**3, 0);
-        const S4 = data.reduce((s,p) => s + p.x**4, 0);
+        const S2 = fitData.reduce((s,p) => s + p.x**2, 0);
+        const S3 = fitData.reduce((s,p) => s + p.x**3, 0);
+        const S4 = fitData.reduce((s,p) => s + p.x**4, 0);
 
-        const T1 = data.reduce((s,p) => s + p.x*p.y, 0);
-        const T2 = data.reduce((s,p) => s + p.x**2*p.y, 0);
+        const T1 = fitData.reduce((s,p) => s + p.x*p.y, 0);
+        const T2 = fitData.reduce((s,p) => s + p.x**2*p.y, 0);
 
         const coeffs = solveLinearSystem(
           [
@@ -940,15 +995,15 @@ function draw() {
         }
       } else {
         // y = ax^2 + bx + c
-        const n = data.length;
-        const S1 = data.reduce((s,p) => s + p.x, 0);
-        const S2 = data.reduce((s,p) => s + p.x**2, 0);
-        const S3 = data.reduce((s,p) => s + p.x**3, 0);
-        const S4 = data.reduce((s,p) => s + p.x**4, 0);
+        const n = fitData.length;
+        const S1 = fitData.reduce((s,p) => s + p.x, 0);
+        const S2 = fitData.reduce((s,p) => s + p.x**2, 0);
+        const S3 = fitData.reduce((s,p) => s + p.x**3, 0);
+        const S4 = fitData.reduce((s,p) => s + p.x**4, 0);
 
-        const T0 = data.reduce((s,p) => s + p.y, 0);
-        const T1 = data.reduce((s,p) => s + p.x*p.y, 0);
-        const T2 = data.reduce((s,p) => s + p.x**2*p.y, 0);
+        const T0 = fitData.reduce((s,p) => s + p.y, 0);
+        const T1 = fitData.reduce((s,p) => s + p.x*p.y, 0);
+        const T2 = fitData.reduce((s,p) => s + p.x**2*p.y, 0);
 
         const coeffs = solveLinearSystem(
           [
@@ -975,7 +1030,7 @@ function draw() {
   if (fitType === "cubic") {
     const throughOrigin = document.getElementById("throughOrigin").checked;
 
-    if ((!throughOrigin && data.length < 4) || (throughOrigin && data.length < 3)) {
+    if ((!throughOrigin && fitData.length < 4) || (throughOrigin && fitData.length < 3)) {
       fitFn = null;
       fitEquation.textContent = throughOrigin
         ? "Virhe: origon kautta kulkeva kuutiollinen sovitus tarvitsee vähintään 3 pistettä."
@@ -983,15 +1038,15 @@ function draw() {
     } else {
       if (throughOrigin) {
         // y = ax^3 + bx^2 + cx
-        const S2 = data.reduce((s,p) => s + p.x**2, 0);
-        const S3 = data.reduce((s,p) => s + p.x**3, 0);
-        const S4 = data.reduce((s,p) => s + p.x**4, 0);
-        const S5 = data.reduce((s,p) => s + p.x**5, 0);
-        const S6 = data.reduce((s,p) => s + p.x**6, 0);
+        const S2 = fitData.reduce((s,p) => s + p.x**2, 0);
+        const S3 = fitData.reduce((s,p) => s + p.x**3, 0);
+        const S4 = fitData.reduce((s,p) => s + p.x**4, 0);
+        const S5 = fitData.reduce((s,p) => s + p.x**5, 0);
+        const S6 = fitData.reduce((s,p) => s + p.x**6, 0);
 
-        const T1 = data.reduce((s,p) => s + p.x*p.y, 0);
-        const T2 = data.reduce((s,p) => s + p.x**2*p.y, 0);
-        const T3 = data.reduce((s,p) => s + p.x**3*p.y, 0);
+        const T1 = fitData.reduce((s,p) => s + p.x*p.y, 0);
+        const T2 = fitData.reduce((s,p) => s + p.x**2*p.y, 0);
+        const T3 = fitData.reduce((s,p) => s + p.x**3*p.y, 0);
 
         const coeffs = solveLinearSystem(
           [
@@ -1012,18 +1067,18 @@ function draw() {
         }
       } else {
         // y = ax^3 + bx^2 + cx + d
-        const n = data.length;
-        const S1 = data.reduce((s,p) => s + p.x, 0);
-        const S2 = data.reduce((s,p) => s + p.x**2, 0);
-        const S3 = data.reduce((s,p) => s + p.x**3, 0);
-        const S4 = data.reduce((s,p) => s + p.x**4, 0);
-        const S5 = data.reduce((s,p) => s + p.x**5, 0);
-        const S6 = data.reduce((s,p) => s + p.x**6, 0);
+        const n = fitData.length;
+        const S1 = fitData.reduce((s,p) => s + p.x, 0);
+        const S2 = fitData.reduce((s,p) => s + p.x**2, 0);
+        const S3 = fitData.reduce((s,p) => s + p.x**3, 0);
+        const S4 = fitData.reduce((s,p) => s + p.x**4, 0);
+        const S5 = fitData.reduce((s,p) => s + p.x**5, 0);
+        const S6 = fitData.reduce((s,p) => s + p.x**6, 0);
 
-        const T0 = data.reduce((s,p) => s + p.y, 0);
-        const T1 = data.reduce((s,p) => s + p.x*p.y, 0);
-        const T2 = data.reduce((s,p) => s + p.x**2*p.y, 0);
-        const T3 = data.reduce((s,p) => s + p.x**3*p.y, 0);
+        const T0 = fitData.reduce((s,p) => s + p.y, 0);
+        const T1 = fitData.reduce((s,p) => s + p.x*p.y, 0);
+        const T2 = fitData.reduce((s,p) => s + p.x**2*p.y, 0);
+        const T3 = fitData.reduce((s,p) => s + p.x**3*p.y, 0);
 
         const coeffs = solveLinearSystem(
           [
@@ -1081,10 +1136,25 @@ function draw() {
 
   // Mittauspisteet
   ctx.fillStyle = "#2563eb";
-  visible.forEach(p => {
+  visibleIncluded.forEach(p => {
     ctx.beginPath();
     ctx.arc(sx(p.x), sy(p.y), 5, 0, Math.PI * 2);
     ctx.fill();
+  });
+
+  ctx.strokeStyle = "#2563eb";
+  ctx.lineWidth = 2.2;
+  visibleIgnored.forEach(p => {
+    const px = sx(p.x);
+    const py = sy(p.y);
+    const r = 5.5;
+
+    ctx.beginPath();
+    ctx.moveTo(px - r, py - r);
+    ctx.lineTo(px + r, py + r);
+    ctx.moveTo(px + r, py - r);
+    ctx.lineTo(px - r, py + r);
+    ctx.stroke();
   });
 
   // axis titles
@@ -1110,7 +1180,7 @@ function draw() {
 document.getElementById("addRow").addEventListener("click", () => {
   addRow();
   const rows = body.querySelectorAll("tr");
-  rows[rows.length - 1].querySelector("input").focus();
+  rows[rows.length - 1].querySelector(".x-input").focus();
 });
 
 document.getElementById("clearBtn").addEventListener("click", () => {
@@ -1162,8 +1232,9 @@ async function copyTableToClipboard() {
   // Ignore rows where both cells are empty.
   const rows = [...body.querySelectorAll("tr")]
     .map(tr => {
-      const inputs = tr.querySelectorAll("input");
-      return [inputs[0].value.trim(), inputs[1].value.trim()];
+      const xInput = tr.querySelector(".x-input");
+      const yInput = tr.querySelector(".y-input");
+      return [xInput.value.trim(), yInput.value.trim()];
     })
     .filter(([x, y]) => x !== "" || y !== "");
 
