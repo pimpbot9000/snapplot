@@ -1502,7 +1502,7 @@ function draw() {
 
       ctx.setLineDash([]);
       ctx.beginPath();
-      ctx.arc(px, py, 4.5, 0, Math.PI * 2);
+      ctx.arc(px, py, 3.5, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
     } else {
@@ -1588,6 +1588,11 @@ for (let i = 0; i < 5; i++) addRow();
 async function copyChartToClipboard() {
   const status = document.getElementById("chartCopyStatus");
   try {
+    // Piirrä kuvaaja juuri ennen kopiointia, jotta myös aktiivinen Trace
+    // (punainen piste ja katkoviivat) tulee varmasti mukaan PNG-kuvaan.
+    draw();
+    await new Promise(resolve => requestAnimationFrame(resolve));
+
     const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
     if (!blob) throw new Error("Kuvan luonti epäonnistui");
 
@@ -1777,6 +1782,26 @@ window.addEventListener("resize", draw);
 syncTableHeaders();
 updateOriginConstraintVisibility();
 draw();
+
+function hasEnteredData() {
+  return [...body.querySelectorAll("tr")].some(tr => {
+    const xInput = tr.querySelector(".x-input");
+    const yInput = tr.querySelector(".y-input");
+
+    const xHasValue = xInput && xInput.value.trim() !== "";
+    const yHasValue = yInput && yInput.value.trim() !== "";
+
+    return xHasValue || yHasValue;
+  });
+}
+
+window.addEventListener("beforeunload", (event) => {
+  if (!hasEnteredData()) return;
+
+  event.preventDefault();
+  event.returnValue = "";
+});
+
 </script>
 </body>
 </html>
