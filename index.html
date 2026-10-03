@@ -141,6 +141,19 @@
     gap: 0;
   }
 
+  .axis-step-row {
+    display: grid;
+    grid-template-columns: 1fr 0.82fr;
+    gap: 8px;
+    align-items: end;
+  }
+
+  input:disabled {
+    background: #f3f4f6;
+    color: #9ca3af;
+    cursor: not-allowed;
+  }
+
   .option-row {
     display: flex;
     gap: 10px;
@@ -414,13 +427,26 @@
       </div>
 
       <div class="axis-grid">
-        <div class="field">
-          <label for="xStep">x-akselin askel</label>
-          <input id="xStep" type="number" min="0" step="any" value="1">
+        <div class="axis-step-row">
+          <div class="field">
+            <label for="xStep">x-akselin askel</label>
+            <input id="xStep" type="number" min="0" step="any" value="1">
+          </div>
+          <div class="field">
+            <label for="xMinorDivisions">apuruudut</label>
+            <input id="xMinorDivisions" type="number" min="1" step="1" value="2" disabled>
+          </div>
         </div>
-        <div class="field">
-          <label for="yStep">y-akselin askel</label>
-          <input id="yStep" type="number" min="0" step="any" value="2">
+
+        <div class="axis-step-row">
+          <div class="field">
+            <label for="yStep">y-akselin askel</label>
+            <input id="yStep" type="number" min="0" step="any" value="2">
+          </div>
+          <div class="field">
+            <label for="yMinorDivisions">apuruudut</label>
+            <input id="yMinorDivisions" type="number" min="1" step="1" value="2" disabled>
+          </div>
         </div>
       </div>
 
@@ -456,6 +482,7 @@
 
       <div class="option-row">
         <label><input type="checkbox" id="showGrid" checked> Ruudukko</label>
+        <label><input type="checkbox" id="showMinorGrid"> Apuruudut</label>
       </div>
 
       <p class="hint">
@@ -608,6 +635,12 @@ function parseNum(v) {
 }
 
 
+function syncMinorGridControls() {
+  const enabled = document.getElementById("showMinorGrid").checked;
+  document.getElementById("xMinorDivisions").disabled = !enabled;
+  document.getElementById("yMinorDivisions").disabled = !enabled;
+}
+
 function syncTableHeaders() {
   const xTitle = document.getElementById("xTitle").value.trim() || "x";
   const yTitle = document.getElementById("yTitle").value.trim() || "y";
@@ -695,6 +728,81 @@ function solveLinearSystem(A, b) {
   return M.map(row => row[n]);
 }
 
+
+function setFitMessage(element, text) {
+  element.textContent = text;
+  element.style.color = text.startsWith("Virhe:") ? "#dc2626" : "";
+}
+
+function fitPolynomialPowers(data, powers) {
+  if (data.length < powers.length) return null;
+
+  const size = powers.length;
+  const A = Array.from({ length: size }, () => Array(size).fill(0));
+  const b = Array(size).fill(0);
+
+  for (const point of data) {
+    for (let i = 0; i < size; i++) {
+      const pi = powers[i];
+      b[i] += point.y * point.x ** pi;
+
+      for (let j = 0; j < size; j++) {
+        A[i][j] += point.x ** (pi + powers[j]);
+      }
+    }
+  }
+
+  const coeffs = solveLinearSystem(A, b);
+  if (!coeffs) return null;
+
+  return {
+    coeffs,
+    fn: x => coeffs.reduce(
+      (sum, coefficient, i) => sum + coefficient * x ** powers[i],
+      0
+    )
+  };
+}
+
+function polynomialTerm(coefficient, power, isFirst) {
+  const absCoefficient = Math.abs(coefficient);
+  const sign = coefficient < 0 ? "−" : "+";
+
+  let variable = "";
+  if (power === 1) variable = "x";
+  else if (power === 2) variable = "x²";
+  else if (power === 3) variable = "x³";
+  else if (power > 3) variable = `x^${power}`;
+
+  const term = power === 0
+    ? fmt(absCoefficient)
+    : `${fmt(absCoefficient)}${variable}`;
+
+  if (isFirst) {
+    return coefficient < 0 ? `−${term}` : term;
+  }
+
+  return ` ${sign} ${term}`;
+}
+
+function formatPolynomial(coeffs, powers) {
+  return "y = " + coeffs
+    .map((coefficient, i) => polynomialTerm(coefficient, powers[i], i === 0))
+    .join("");
+}
+
+function applyPolynomialFit(data, powers, fitEquation, errorMessage) {
+  const result = fitPolynomialPowers(data, powers);
+
+  if (!result) {
+    setFitMessage(fitEquation, errorMessage);
+    return null;
+  }
+
+  setFitMessage(fitEquation, formatPolynomial(result.coeffs, powers));
+  return result.fn;
+}
+
 function updateOriginConstraintVisibility() {
   const field = document.getElementById("originConstraintField");
   if (!field) return;
@@ -762,6 +870,48 @@ function draw() {
   ctx.lineWidth = 1;
 
   const showGrid = document.getElementById("showGrid").checked;
+  const showMinorGrid = document.getElementById("showMinorGrid").checked;
+
+  const typedXMinorDivisions = parseNum(document.getElementById("xMinorDivisions").value);
+  const typedYMinorDivisions = parseNum(document.getElementById("yMinorDivisions").value);
+
+  const xMinorDivisions = Number.isFinite(typedXMinorDivisions) && typedXMinorDivisions >= 1
+    ? Math.max(1, Math.round(typedXMinorDivisions))
+    : 2;
+  const yMinorDivisions = Number.isFinite(typedYMinorDivisions) && typedYMinorDivisions >= 1
+    ? Math.max(1, Math.round(typedYMinorDivisions))
+    : 2;
+
+  // Minor grid first, so the darker main grid stays visually dominant.
+  if (showGrid && showMinorGrid) {
+    ctx.strokeStyle = "#e5e7eb";
+    ctx.lineWidth = 1;
+
+    const xMinorStep = xStep / xMinorDivisions;
+    const yMinorStep = yStep / yMinorDivisions;
+
+    for (let x = xMinorStep; x < xMax + xMinorStep * 0.001; x += xMinorStep) {
+      const majorIndex = x / xStep;
+      if (Math.abs(majorIndex - Math.round(majorIndex)) < 1e-8) continue;
+
+      const px = sx(x);
+      ctx.beginPath();
+      ctx.moveTo(px, margin.top);
+      ctx.lineTo(px, margin.top + plotH);
+      ctx.stroke();
+    }
+
+    for (let y = yMinorStep; y < yMax + yMinorStep * 0.001; y += yMinorStep) {
+      const majorIndex = y / yStep;
+      if (Math.abs(majorIndex - Math.round(majorIndex)) < 1e-8) continue;
+
+      const py = sy(y);
+      ctx.beginPath();
+      ctx.moveTo(margin.left, py);
+      ctx.lineTo(margin.left + plotW, py);
+      ctx.stroke();
+    }
+  }
 
   ctx.fillStyle = "#4b5563";
 
@@ -769,7 +919,7 @@ function draw() {
     const px = sx(x);
 
     if (showGrid) {
-      ctx.strokeStyle = "#e5e7eb";
+      ctx.strokeStyle = "#b8c2cf";
       ctx.beginPath();
       ctx.moveTo(px, margin.top);
       ctx.lineTo(px, margin.top + plotH);
@@ -785,7 +935,7 @@ function draw() {
     const py = sy(y);
 
     if (showGrid) {
-      ctx.strokeStyle = "#e5e7eb";
+      ctx.strokeStyle = "#b8c2cf";
       ctx.beginPath();
       ctx.moveTo(margin.left, py);
       ctx.lineTo(margin.left + plotW, py);
@@ -830,43 +980,63 @@ function draw() {
   // Sovitus
   const fitType = document.getElementById("fitType").value;
   const fitEquation = document.getElementById("fitEquation");
-  fitEquation.textContent = "";
+  setFitMessage(fitEquation, "");
 
   let fitFn = null;
 
-  if (fitData.length >= 2 && fitType === "linear") {
-    const n = fitData.length;
-    const sx1 = fitData.reduce((s,p) => s + p.x, 0);
-    const sy1 = fitData.reduce((s,p) => s + p.y, 0);
-    const sxx = fitData.reduce((s,p) => s + p.x*p.x, 0);
-    const sxy = fitData.reduce((s,p) => s + p.x*p.y, 0);
-    const den = n*sxx - sx1*sx1;
-    if (Math.abs(den) > 1e-12) {
-      const k = (n*sxy - sx1*sy1) / den;
-      const b = (sy1 - k*sx1) / n;
-      fitFn = x => k*x + b;
-      fitEquation.textContent = `y = ${fmt(k)}x ${b < 0 ? "−" : "+"} ${fmt(Math.abs(b))}`;
-    }
+  if (fitType === "linear") {
+    fitFn = applyPolynomialFit(
+      fitData,
+      [1, 0],
+      fitEquation,
+      "Virhe: lineaarinen sovitus tarvitsee vähintään 2 toisistaan poikkeavaa x-arvoa."
+    );
   }
 
-  if (fitData.length >= 1 && fitType === "proportional") {
-    const num = fitData.reduce((s,p) => s + p.x*p.y, 0);
-    const den = fitData.reduce((s,p) => s + p.x*p.x, 0);
-    if (den > 1e-12) {
-      const k = num / den;
-      fitFn = x => k*x;
-      fitEquation.textContent = `y = ${fmt(k)}x`;
-    }
+  if (fitType === "proportional") {
+    fitFn = applyPolynomialFit(
+      fitData,
+      [1],
+      fitEquation,
+      "Virhe: suoraan verrannollista sovitusta ei voitu laskea."
+    );
   }
 
-  if (fitData.length >= 1 && fitType === "quadratic") {
-    const num = fitData.reduce((s,p) => s + p.x*p.x*p.y, 0);
-    const den = fitData.reduce((s,p) => s + Math.pow(p.x,4), 0);
-    if (den > 1e-12) {
-      const a = num / den;
-      fitFn = x => a*x*x;
-      fitEquation.textContent = `y = ${fmt(a)}x²`;
-    }
+  if (fitType === "quadratic") {
+    fitFn = applyPolynomialFit(
+      fitData,
+      [2],
+      fitEquation,
+      "Virhe: sovitusta y = ax² ei voitu laskea."
+    );
+  }
+
+  if (fitType === "quadraticGeneral") {
+    const throughOrigin = document.getElementById("throughOrigin").checked;
+    const powers = throughOrigin ? [2, 1] : [2, 1, 0];
+
+    fitFn = applyPolynomialFit(
+      fitData,
+      powers,
+      fitEquation,
+      throughOrigin
+        ? "Virhe: origon kautta kulkeva toisen asteen sovitus tarvitsee vähintään 2 sopivaa pistettä."
+        : "Virhe: toisen asteen sovitus tarvitsee vähintään 3 sopivaa pistettä."
+    );
+  }
+
+  if (fitType === "cubic") {
+    const throughOrigin = document.getElementById("throughOrigin").checked;
+    const powers = throughOrigin ? [3, 2, 1] : [3, 2, 1, 0];
+
+    fitFn = applyPolynomialFit(
+      fitData,
+      powers,
+      fitEquation,
+      throughOrigin
+        ? "Virhe: origon kautta kulkeva kuutiollinen sovitus tarvitsee vähintään 3 sopivaa pistettä."
+        : "Virhe: kuutiollinen sovitus tarvitsee vähintään 4 sopivaa pistettä."
+    );
   }
 
   if (fitType === "exponentialE") {
@@ -887,7 +1057,7 @@ function draw() {
         const a = Math.exp(lnA);
 
         fitFn = x => a * Math.exp(b*x);
-        fitEquation.textContent = `y = ${fmt(a)}e^(${fmt(b)}x)`;
+        setFitMessage(fitEquation, `y = ${fmt(a)}e^(${fmt(b)}x)`);
       }
     }
   }
@@ -911,7 +1081,7 @@ function draw() {
         const q = Math.exp(b);
 
         fitFn = x => a * Math.pow(q, x);
-        fitEquation.textContent = `y = ${fmt(a)}·${fmt(q)}^x`;
+        setFitMessage(fitEquation, `y = ${fmt(a)}·${fmt(q)}^x`);
       }
     }
   }
@@ -927,7 +1097,7 @@ function draw() {
       if (den > 1e-12) {
         const k = num / den;
         fitFn = x => k * Math.sqrt(x);
-        fitEquation.textContent = `y = ${fmt(k)}√x`;
+        setFitMessage(fitEquation, `y = ${fmt(k)}√x`);
       }
     }
   }
@@ -939,7 +1109,7 @@ function draw() {
 
     if (hasZeroX) {
       fitFn = null;
-      fitEquation.textContent = "Virhe: kääntäen verrannollista sovitusta ei voi tehdä, kun x = 0.";
+      setFitMessage(fitEquation, "Virhe: kääntäen verrannollista sovitusta ei voi tehdä, kun x = 0.");
     } else if (fitData.length >= 1) {
       const num = fitData.reduce((s,p) => s + (1 / p.x) * p.y, 0);
       const den = fitData.reduce((s,p) => s + 1 / (p.x * p.x), 0);
@@ -950,155 +1120,10 @@ function draw() {
           if (Math.abs(x) < 1e-12) return NaN;
           return k / x;
         };
-        fitEquation.textContent = `y = ${fmt(k)}/x`;
+        setFitMessage(fitEquation, `y = ${fmt(k)}/x`);
       } else {
         fitFn = null;
-        fitEquation.textContent = "Virhe: sovitusta ei voitu laskea.";
-      }
-    }
-  }
-
-  if (fitType === "quadraticGeneral") {
-    const throughOrigin = document.getElementById("throughOrigin").checked;
-
-    if ((!throughOrigin && fitData.length < 3) || (throughOrigin && fitData.length < 2)) {
-      fitFn = null;
-      fitEquation.textContent = throughOrigin
-        ? "Virhe: origon kautta kulkeva toisen asteen sovitus tarvitsee vähintään 2 pistettä."
-        : "Virhe: toisen asteen sovitus tarvitsee vähintään 3 pistettä.";
-    } else {
-      if (throughOrigin) {
-        // y = ax^2 + bx
-        const S2 = fitData.reduce((s,p) => s + p.x**2, 0);
-        const S3 = fitData.reduce((s,p) => s + p.x**3, 0);
-        const S4 = fitData.reduce((s,p) => s + p.x**4, 0);
-
-        const T1 = fitData.reduce((s,p) => s + p.x*p.y, 0);
-        const T2 = fitData.reduce((s,p) => s + p.x**2*p.y, 0);
-
-        const coeffs = solveLinearSystem(
-          [
-            [S4, S3],
-            [S3, S2]
-          ],
-          [T2, T1]
-        );
-
-        if (coeffs) {
-          const [a, b] = coeffs;
-          fitFn = x => a*x**2 + b*x;
-          fitEquation.textContent =
-            `y = ${fmt(a)}x² ${b < 0 ? "−" : "+"} ${fmt(Math.abs(b))}x`;
-        } else {
-          fitFn = null;
-          fitEquation.textContent = "Virhe: toisen asteen sovitusta ei voitu laskea.";
-        }
-      } else {
-        // y = ax^2 + bx + c
-        const n = fitData.length;
-        const S1 = fitData.reduce((s,p) => s + p.x, 0);
-        const S2 = fitData.reduce((s,p) => s + p.x**2, 0);
-        const S3 = fitData.reduce((s,p) => s + p.x**3, 0);
-        const S4 = fitData.reduce((s,p) => s + p.x**4, 0);
-
-        const T0 = fitData.reduce((s,p) => s + p.y, 0);
-        const T1 = fitData.reduce((s,p) => s + p.x*p.y, 0);
-        const T2 = fitData.reduce((s,p) => s + p.x**2*p.y, 0);
-
-        const coeffs = solveLinearSystem(
-          [
-            [S4, S3, S2],
-            [S3, S2, S1],
-            [S2, S1, n]
-          ],
-          [T2, T1, T0]
-        );
-
-        if (coeffs) {
-          const [a, b, c] = coeffs;
-          fitFn = x => a*x**2 + b*x + c;
-          fitEquation.textContent =
-            `y = ${fmt(a)}x² ${b < 0 ? "−" : "+"} ${fmt(Math.abs(b))}x ${c < 0 ? "−" : "+"} ${fmt(Math.abs(c))}`;
-        } else {
-          fitFn = null;
-          fitEquation.textContent = "Virhe: toisen asteen sovitusta ei voitu laskea.";
-        }
-      }
-    }
-  }
-
-  if (fitType === "cubic") {
-    const throughOrigin = document.getElementById("throughOrigin").checked;
-
-    if ((!throughOrigin && fitData.length < 4) || (throughOrigin && fitData.length < 3)) {
-      fitFn = null;
-      fitEquation.textContent = throughOrigin
-        ? "Virhe: origon kautta kulkeva kuutiollinen sovitus tarvitsee vähintään 3 pistettä."
-        : "Virhe: kuutiollinen sovitus tarvitsee vähintään 4 pistettä.";
-    } else {
-      if (throughOrigin) {
-        // y = ax^3 + bx^2 + cx
-        const S2 = fitData.reduce((s,p) => s + p.x**2, 0);
-        const S3 = fitData.reduce((s,p) => s + p.x**3, 0);
-        const S4 = fitData.reduce((s,p) => s + p.x**4, 0);
-        const S5 = fitData.reduce((s,p) => s + p.x**5, 0);
-        const S6 = fitData.reduce((s,p) => s + p.x**6, 0);
-
-        const T1 = fitData.reduce((s,p) => s + p.x*p.y, 0);
-        const T2 = fitData.reduce((s,p) => s + p.x**2*p.y, 0);
-        const T3 = fitData.reduce((s,p) => s + p.x**3*p.y, 0);
-
-        const coeffs = solveLinearSystem(
-          [
-            [S6, S5, S4],
-            [S5, S4, S3],
-            [S4, S3, S2]
-          ],
-          [T3, T2, T1]
-        );
-
-        if (coeffs) {
-          const [a, b, c] = coeffs;
-          fitFn = x => a*x**3 + b*x**2 + c*x;
-          fitEquation.textContent = `y = ${fmt(a)}x³ ${b < 0 ? "−" : "+"} ${fmt(Math.abs(b))}x² ${c < 0 ? "−" : "+"} ${fmt(Math.abs(c))}x`;
-        } else {
-          fitFn = null;
-          fitEquation.textContent = "Virhe: kuutiollista sovitusta ei voitu laskea.";
-        }
-      } else {
-        // y = ax^3 + bx^2 + cx + d
-        const n = fitData.length;
-        const S1 = fitData.reduce((s,p) => s + p.x, 0);
-        const S2 = fitData.reduce((s,p) => s + p.x**2, 0);
-        const S3 = fitData.reduce((s,p) => s + p.x**3, 0);
-        const S4 = fitData.reduce((s,p) => s + p.x**4, 0);
-        const S5 = fitData.reduce((s,p) => s + p.x**5, 0);
-        const S6 = fitData.reduce((s,p) => s + p.x**6, 0);
-
-        const T0 = fitData.reduce((s,p) => s + p.y, 0);
-        const T1 = fitData.reduce((s,p) => s + p.x*p.y, 0);
-        const T2 = fitData.reduce((s,p) => s + p.x**2*p.y, 0);
-        const T3 = fitData.reduce((s,p) => s + p.x**3*p.y, 0);
-
-        const coeffs = solveLinearSystem(
-          [
-            [S6, S5, S4, S3],
-            [S5, S4, S3, S2],
-            [S4, S3, S2, S1],
-            [S3, S2, S1, n]
-          ],
-          [T3, T2, T1, T0]
-        );
-
-        if (coeffs) {
-          const [a, b, c, d] = coeffs;
-          fitFn = x => a*x**3 + b*x**2 + c*x + d;
-          fitEquation.textContent =
-            `y = ${fmt(a)}x³ ${b < 0 ? "−" : "+"} ${fmt(Math.abs(b))}x² ${c < 0 ? "−" : "+"} ${fmt(Math.abs(c))}x ${d < 0 ? "−" : "+"} ${fmt(Math.abs(d))}`;
-        } else {
-          fitFn = null;
-          fitEquation.textContent = "Virhe: kuutiollista sovitusta ei voitu laskea.";
-        }
+        setFitMessage(fitEquation, "Virhe: sovitusta ei voitu laskea.");
       }
     }
   }
@@ -1185,19 +1210,23 @@ document.getElementById("addRow").addEventListener("click", () => {
 
 document.getElementById("clearBtn").addEventListener("click", () => {
   body.innerHTML = "";
-  for (let i = 0; i < 5; i++) addRow();
+  syncMinorGridControls();
+
+for (let i = 0; i < 5; i++) addRow();
   draw();
 });
 
-["xTitle","yTitle","xMax","yMax","xStep","yStep","fitType","throughOrigin","axisFontSize","showGrid"].forEach(id => {
+["xTitle","yTitle","xMax","yMax","xStep","yStep","xMinorDivisions","yMinorDivisions","fitType","throughOrigin","axisFontSize","showGrid","showMinorGrid"].forEach(id => {
   document.getElementById(id).addEventListener("input", () => {
     if (id === "xTitle" || id === "yTitle") syncTableHeaders();
     if (id === "fitType") updateOriginConstraintVisibility();
+    if (id === "showMinorGrid") syncMinorGridControls();
     draw();
   });
   document.getElementById(id).addEventListener("change", () => {
     if (id === "xTitle" || id === "yTitle") syncTableHeaders();
     if (id === "fitType") updateOriginConstraintVisibility();
+    if (id === "showMinorGrid") syncMinorGridControls();
     draw();
   });
 });
